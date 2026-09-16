@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+
+# Build output
+dist/
+
+# Environment / secrets
+.env
+.env.local
+!.env.example
+
+# YouTube Music auth session (live cookies — never commit)
+python-service/browser.json
+python-service/playwright_state.json
+python-service/oauth.json
+
+# User data (saved playlists list, not code)
+server/data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
