@@ -1,0 +1,25 @@
+services:
+  server:
+    build: ./server
+    container_name: ytm-server
+    restart: unless-stopped
+    environment:
+      - PORT=4000
+      # Опційно: YTM_COOKIE=... (розкоментуй, якщо потрібні приватні плейлисти
+      # без збереження за ID — див. server/.env.example)
+    volumes:
+      - server-data:/app/data
+    ports:
+      - "4000:4000"
+
+  client:
+    build: ./client
+    container_name: ytm-client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+
+volumes:
+  server-data:
