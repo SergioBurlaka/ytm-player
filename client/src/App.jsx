@@ -96,7 +96,11 @@ export default function App() {
 
   async function saveMix() {
     const name = mixName.trim()
-    if (!name || mixResult.length === 0) return
+    if (mixResult.length === 0) return
+    if (!name) {
+      setMixSaveError("Спочатку впиши назву міксу")
+      return
+    }
     setMixSaving(true)
     setMixSaveError("")
     try {
@@ -512,7 +516,7 @@ export default function App() {
                 placeholder="Назва міксу"
                 style={{ flex: 1, padding: 6 }}
               />
-              <button onClick={saveMix} disabled={!mixName.trim() || mixResult.length === 0 || mixSaving}>
+              <button onClick={saveMix} disabled={mixResult.length === 0 || mixSaving}>
                 {mixSaving ? "Збереження…" : "💾 Зберегти"}
               </button>
             </div>
