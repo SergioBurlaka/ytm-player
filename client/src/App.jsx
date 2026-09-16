@@ -18,6 +18,15 @@ export default function App() {
   const [reseedLoading, setReseedLoading] = useState(false)
   const [reseedStatus, setReseedStatus] = useState("")
   const [savedPlaylists, setSavedPlaylists] = useState([])
+  const [crossfadeSeconds, setCrossfadeSeconds] = useState(() => {
+    const raw = localStorage.getItem("crossfadeSeconds")
+    const saved = raw === null ? NaN : Number(raw)
+    return Number.isFinite(saved) && saved >= 0 ? saved : 20
+  })
+
+  useEffect(() => {
+    localStorage.setItem("crossfadeSeconds", String(crossfadeSeconds))
+  }, [crossfadeSeconds])
   const [savedError, setSavedError] = useState("")
   const [newSavedId, setNewSavedId] = useState("")
   const [savingId, setSavingId] = useState(false)
@@ -79,12 +88,13 @@ export default function App() {
     }
   }
 
-  async function loadPlaylist() {
-    if (!playlistId) return
+  async function loadPlaylist(idOverride) {
+    const id = idOverride || playlistId
+    if (!id) return
     setLoading(true)
     setError("")
     try {
-      const res = await fetch(`${API_BASE}/playlist/${encodeURIComponent(playlistId)}`)
+      const res = await fetch(`${API_BASE}/playlist/${encodeURIComponent(id)}`)
       if (!res.ok) throw new Error("Не вдалося завантажити плейлист (перевір ID / cookie на сервері)")
       const data = await res.json()
       if (!Array.isArray(data) || data.length === 0) {
@@ -157,6 +167,11 @@ export default function App() {
   }
 
   const currentTrack = order.length ? tracks[order[current]] : null
+  const playQueue = order
+    .slice(current)
+    .concat(order.slice(0, current)) // для кросфейду на останньому треку — зациклюємось на перший
+    .map((idx) => tracks[idx]?.videoId)
+    .filter(Boolean)
 
   return (
     <div style={{ maxWidth: 720, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
@@ -174,7 +189,7 @@ export default function App() {
           style={{ flex: 1, padding: 8 }}
           onKeyDown={(e) => e.key === "Enter" && loadPlaylist()}
         />
-        <button onClick={loadPlaylist} disabled={!playlistId || loading}>
+        <button onClick={() => loadPlaylist()} disabled={!playlistId || loading}>
           {loading ? "Завантаження…" : "Завантажити"}
         </button>
       </div>
@@ -213,7 +228,7 @@ export default function App() {
                   style={{ cursor: "pointer" }}
                   onClick={() => {
                     setPlaylistId(pl.id)
-                    setTimeout(loadPlaylist, 0)
+                    loadPlaylist(pl.id)
                   }}
                 >
                   {pl.name}
@@ -238,7 +253,7 @@ export default function App() {
                   style={{ cursor: "pointer" }}
                   onClick={() => {
                     setPlaylistId(pl.playlistId)
-                    setTimeout(loadPlaylist, 0)
+                    loadPlaylist(pl.playlistId)
                   }}
                 >
                   {pl.title} {pl.count != null ? `(${pl.count})` : ""}
@@ -294,11 +309,26 @@ export default function App() {
             Зараз грає: {currentTrack.name || currentTrack.title}
             {currentTrack.artist?.name ? ` — ${currentTrack.artist.name}` : ""}
           </h3>
-          <Player videoId={currentTrack.videoId} onEnded={playNext} />
+          <Player queue={playQueue} onAdvance={playNext} crossfadeSeconds={crossfadeSeconds} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button onClick={playPrev}>⏮ Попередній</button>
             <button onClick={playNext}>⏭ Наступний</button>
             <button onClick={shuffle}>🔀 Перемішати</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <label htmlFor="crossfade" style={{ whiteSpace: "nowrap" }}>
+              🎚 Зведення: {crossfadeSeconds}с
+            </label>
+            <input
+              id="crossfade"
+              type="range"
+              min={0}
+              max={60}
+              step={1}
+              value={crossfadeSeconds}
+              onChange={(e) => setCrossfadeSeconds(Number(e.target.value))}
+              style={{ flex: 1, maxWidth: 240 }}
+            />
           </div>
         </div>
       )}
