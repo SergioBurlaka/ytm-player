@@ -12,6 +12,10 @@ dist/
 # User data (saved playlists list, not code)
 server/data/
 
+# Database dumps (містять email/хеші паролів користувачів)
+*.sql
+!server/db/schema.sql
+
 # OS / editor
 .DS_Store
 Thumbs.db
