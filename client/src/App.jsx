@@ -124,10 +124,17 @@ export default function App() {
     }
   }
 
-  function addToMix(track, origin) {
+  function addToMix(track, origin, sourceIndex) {
+    const sourceListId = origin === "A" ? mixAId : mixBId
     setMixResult((prev) => [
       ...prev,
-      { ...track, _origin: origin, _key: `${origin}-${track.videoId}-${Date.now()}-${Math.random()}` },
+      {
+        ...track,
+        _origin: origin,
+        _sourceIndex: sourceIndex,
+        _sourceListId: sourceListId,
+        _key: `${origin}-${sourceIndex}-${Date.now()}-${Math.random()}`,
+      },
     ])
   }
 
@@ -181,6 +188,17 @@ export default function App() {
   function playPrev() {
     setCurrent((c) => (order.length ? (c - 1 + order.length) % order.length : 0))
   }
+
+  const usedMixAIndices = new Set(
+    mixResult
+      .filter((t) => t._origin === "A" && t._sourceListId === mixAId)
+      .map((t) => t._sourceIndex)
+  )
+  const usedMixBIndices = new Set(
+    mixResult
+      .filter((t) => t._origin === "B" && t._sourceListId === mixBId)
+      .map((t) => t._sourceIndex)
+  )
 
   const currentTrack = order.length ? tracks[order[current]] : null
   const playQueue = order
@@ -290,21 +308,25 @@ export default function App() {
                 borderRadius: 6,
               }}
             >
-              {mixATracks.map((t, i) => (
-                <li
-                  key={i}
-                  onClick={() => addToMix(t, "A")}
-                  style={{
-                    cursor: "pointer",
-                    padding: "6px 10px",
-                    background: "#ffe3e3",
-                    borderBottom: "1px solid #ffc9c9",
-                  }}
-                >
-                  {t.name || t.title}
-                  {t.artist?.name ? ` — ${t.artist.name}` : ""}
-                </li>
-              ))}
+              {mixATracks.map((t, i) => {
+                const used = usedMixAIndices.has(i)
+                return (
+                  <li
+                    key={i}
+                    onClick={() => !used && addToMix(t, "A", i)}
+                    style={{
+                      cursor: used ? "default" : "pointer",
+                      padding: "6px 10px",
+                      background: used ? "#e0e0e0" : "#ffe3e3",
+                      color: used ? "#888" : "inherit",
+                      borderBottom: used ? "1px solid #ccc" : "1px solid #ffc9c9",
+                    }}
+                  >
+                    {t.name || t.title}
+                    {t.artist?.name ? ` — ${t.artist.name}` : ""}
+                  </li>
+                )
+              })}
             </ul>
           </div>
 
@@ -337,21 +359,25 @@ export default function App() {
                 borderRadius: 6,
               }}
             >
-              {mixBTracks.map((t, i) => (
-                <li
-                  key={i}
-                  onClick={() => addToMix(t, "B")}
-                  style={{
-                    cursor: "pointer",
-                    padding: "6px 10px",
-                    background: "#e0f0ff",
-                    borderBottom: "1px solid #b9e0ff",
-                  }}
-                >
-                  {t.name || t.title}
-                  {t.artist?.name ? ` — ${t.artist.name}` : ""}
-                </li>
-              ))}
+              {mixBTracks.map((t, i) => {
+                const used = usedMixBIndices.has(i)
+                return (
+                  <li
+                    key={i}
+                    onClick={() => !used && addToMix(t, "B", i)}
+                    style={{
+                      cursor: used ? "default" : "pointer",
+                      padding: "6px 10px",
+                      background: used ? "#e0e0e0" : "#e0f0ff",
+                      color: used ? "#888" : "inherit",
+                      borderBottom: used ? "1px solid #ccc" : "1px solid #b9e0ff",
+                    }}
+                  >
+                    {t.name || t.title}
+                    {t.artist?.name ? ` — ${t.artist.name}` : ""}
+                  </li>
+                )
+              })}
             </ul>
           </div>
 
