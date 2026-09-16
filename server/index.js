@@ -83,54 +83,9 @@ app.get("/api/search", async (req, res) => {
 })
 
 /**
- * GET /api/library/playlists
- * Проксі до Python-мікросервісу (python-service/app.py), який використовує
- * ytmusicapi.get_library_playlists() — повний список плейлистів користувача.
- * Потребує запущеного `python app.py` на PYTHON_SERVICE_URL (типово :5000).
- */
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://localhost:5000"
-
-app.get("/api/library/playlists", async (req, res) => {
-  try {
-    const r = await fetch(`${PYTHON_SERVICE_URL}/library/playlists`)
-    if (!r.ok) throw new Error(`Python service responded ${r.status}`)
-    const data = await r.json()
-    res.json(data)
-  } catch (err) {
-    console.error("[/api/library/playlists] error:", err)
-    res
-      .status(502)
-      .json({ error: `Не вдалося дістатись Python-сервісу: ${err.message}` })
-  }
-})
-
-/**
- * POST /api/auth/reseed
- * Проксі до Python-мікросервіса: приймає текст "Copy as fetch (Node.js)"
- * з DevTools і оновлює browser.json/playwright_state.json на сервері.
- */
-app.post("/api/auth/reseed", async (req, res) => {
-  try {
-    const r = await fetch(`${PYTHON_SERVICE_URL}/auth/reseed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fetchText: req.body?.fetchText || "" }),
-    })
-    const data = await r.json()
-    res.status(r.status).json(data)
-  } catch (err) {
-    console.error("[/api/auth/reseed] error:", err)
-    res
-      .status(502)
-      .json({ ok: false, error: `Не вдалося дістатись Python-сервісу: ${err.message}` })
-  }
-})
-
-/**
- * Збережені плейлисти (id + назва), які не залежать від Python-сервісу.
- * Завантаження плейлиста за ID (нижче, /api/playlist/:id) працює анонімно —
- * тому досить один раз зберегти ID, і плейлист завжди буде доступний,
- * навіть якщо сесія Python-сервісу "протухла".
+ * Збережені плейлисти (id + назва). Завантаження плейлиста за ID (нижче,
+ * /api/playlist/:id) працює анонімно — тому досить один раз зберегти ID,
+ * і плейлист завжди буде доступний.
  */
 app.get("/api/saved-playlists", async (req, res) => {
   try {

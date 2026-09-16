@@ -10,13 +10,6 @@ export default function App() {
   const [current, setCurrent] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [library, setLibrary] = useState(null) // null = ще не завантажували
-  const [libraryLoading, setLibraryLoading] = useState(false)
-  const [libraryError, setLibraryError] = useState("")
-  const [showReseed, setShowReseed] = useState(false)
-  const [fetchText, setFetchText] = useState("")
-  const [reseedLoading, setReseedLoading] = useState(false)
-  const [reseedStatus, setReseedStatus] = useState("")
   const [savedPlaylists, setSavedPlaylists] = useState([])
   const [crossfadeSeconds, setCrossfadeSeconds] = useState(() => {
     const raw = localStorage.getItem("crossfadeSeconds")
@@ -73,21 +66,6 @@ export default function App() {
     }
   }
 
-  async function loadLibrary() {
-    setLibraryLoading(true)
-    setLibraryError("")
-    try {
-      const res = await fetch(`${API_BASE}/library/playlists`)
-      if (!res.ok) throw new Error("Не вдалося отримати список плейлистів")
-      const data = await res.json()
-      setLibrary(data)
-    } catch (e) {
-      setLibraryError(e.message)
-    } finally {
-      setLibraryLoading(false)
-    }
-  }
-
   async function loadPlaylist(idOverride) {
     const id = idOverride || playlistId
     if (!id) return
@@ -109,30 +87,6 @@ export default function App() {
       setOrder([])
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function reseedSession() {
-    if (!fetchText.trim()) return
-    setReseedLoading(true)
-    setReseedStatus("")
-    try {
-      const res = await fetch(`${API_BASE}/auth/reseed`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fetchText }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Не вдалося оновити сесію")
-      }
-      setReseedStatus("✅ Сесію оновлено")
-      setFetchText("")
-      setShowReseed(false)
-    } catch (e) {
-      setReseedStatus(`❌ ${e.message}`)
-    } finally {
-      setReseedLoading(false)
     }
   }
 
@@ -198,9 +152,6 @@ export default function App() {
 
       <div style={{ marginTop: 16 }}>
         <h3>⭐ Збережені плейлисти</h3>
-        <p style={{ color: "#666", fontSize: 13 }}>
-          Завантаження за ID не потребує сесії Python-сервісу — надійний спосіб.
-        </p>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             value={newSavedId}
@@ -238,69 +189,6 @@ export default function App() {
             ))}
           </ul>
         )}
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <button onClick={loadLibrary} disabled={libraryLoading}>
-          {libraryLoading ? "Завантаження…" : "📚 Мої плейлисти (потребує Python-сервіс)"}
-        </button>
-        {libraryError && <p style={{ color: "crimson" }}>{libraryError}</p>}
-        {library && library.length > 0 && (
-          <ul style={{ paddingLeft: 20, marginTop: 8 }}>
-            {library.map((pl) => (
-              <li key={pl.playlistId} style={{ marginBottom: 4 }}>
-                <span
-                  style={{ cursor: "pointer" }}
-                  onClick={() => {
-                    setPlaylistId(pl.playlistId)
-                    loadPlaylist(pl.playlistId)
-                  }}
-                >
-                  {pl.title} {pl.count != null ? `(${pl.count})` : ""}
-                </span>{" "}
-                {!savedPlaylists.some((s) => s.id === pl.playlistId) && (
-                  <button
-                    onClick={() => savePlaylist(pl.playlistId, pl.title)}
-                    disabled={savingId === pl.playlistId}
-                    title="Зберегти назавжди"
-                  >
-                    💾
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <button onClick={() => setShowReseed((v) => !v)}>
-          🔑 Оновити сесію YouTube Music
-        </button>
-        {showReseed && (
-          <div style={{ marginTop: 8 }}>
-            <p style={{ color: "#666", fontSize: 13 }}>
-              У music.youtube.com (залогінений) відкрий DevTools → Network → будь-який
-              запит до <code>/browse</code> → правою кнопкою →{" "}
-              <strong>Copy → Copy as fetch (Node.js)</strong> → встав сюди:
-            </p>
-            <textarea
-              value={fetchText}
-              onChange={(e) => setFetchText(e.target.value)}
-              placeholder="fetch(&quot;https://music.youtube.com/youtubei/v1/browse...&quot;, { ... })"
-              rows={6}
-              style={{ width: "100%", padding: 8, fontFamily: "monospace", fontSize: 12 }}
-            />
-            <button
-              onClick={reseedSession}
-              disabled={!fetchText.trim() || reseedLoading}
-              style={{ marginTop: 8 }}
-            >
-              {reseedLoading ? "Оновлення…" : "Зберегти сесію"}
-            </button>
-          </div>
-        )}
-        {reseedStatus && <p style={{ marginTop: 8 }}>{reseedStatus}</p>}
       </div>
 
       {currentTrack && (
