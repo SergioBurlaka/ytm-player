@@ -27,6 +27,8 @@ export default function App() {
   // Мікс двох плейлистів (A/Б) у результуючий список
   const [mixAId, setMixAId] = useState("")
   const [mixBId, setMixBId] = useState("")
+  const [mixACount, setMixACount] = useState(2)
+  const [mixBCount, setMixBCount] = useState(2)
   const [mixATracks, setMixATracks] = useState([])
   const [mixBTracks, setMixBTracks] = useState([])
   const [mixALoading, setMixALoading] = useState(false)
@@ -124,18 +126,46 @@ export default function App() {
     }
   }
 
+  function buildMixEntry(track, origin, sourceIndex, sourceListId) {
+    return {
+      ...track,
+      _origin: origin,
+      _sourceIndex: sourceIndex,
+      _sourceListId: sourceListId,
+      _key: `${origin}-${sourceIndex}-${Date.now()}-${Math.random()}`,
+    }
+  }
+
   function addToMix(track, origin, sourceIndex) {
     const sourceListId = origin === "A" ? mixAId : mixBId
-    setMixResult((prev) => [
-      ...prev,
-      {
-        ...track,
-        _origin: origin,
-        _sourceIndex: sourceIndex,
-        _sourceListId: sourceListId,
-        _key: `${origin}-${sourceIndex}-${Date.now()}-${Math.random()}`,
-      },
-    ])
+    setMixResult((prev) => [...prev, buildMixEntry(track, origin, sourceIndex, sourceListId)])
+  }
+
+  function generateMix() {
+    const cA = Math.max(0, Math.floor(Number(mixACount) || 0))
+    const cB = Math.max(0, Math.floor(Number(mixBCount) || 0))
+    if (cA <= 0 && cB <= 0) return
+
+    const result = []
+    let ai = 0
+    let bi = 0
+    // Чергуємо: cA треків з А, cB треків з Б, і так далі, поки в якомусь зі
+    // списків не забракне треків на повну наступну порцію — тоді зупиняємось.
+    while (true) {
+      if (cA > 0) {
+        if (ai + cA > mixATracks.length) break
+        for (let k = 0; k < cA; k++, ai++) {
+          result.push(buildMixEntry(mixATracks[ai], "A", ai, mixAId))
+        }
+      }
+      if (cB > 0) {
+        if (bi + cB > mixBTracks.length) break
+        for (let k = 0; k < cB; k++, bi++) {
+          result.push(buildMixEntry(mixBTracks[bi], "B", bi, mixBId))
+        }
+      }
+    }
+    setMixResult(result)
   }
 
   function removeFromMix(key) {
@@ -275,11 +305,33 @@ export default function App() {
         <h3>🎛 Мікс двох плейлистів</h3>
         <p style={{ color: "#666", fontSize: 13 }}>
           Обери плейлист А і Б зі збережених, клікай по треках — вони підуть у
-          результуючий список праворуч зі своїм кольором.
+          результуючий список праворуч зі своїм кольором. Або вкажи, скільки
+          треків брати по черзі з кожного, і натисни "Згенерувати".
         </p>
+
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+          <button onClick={generateMix} disabled={mixACount <= 0 && mixBCount <= 0}>
+            🎲 Згенерувати плейлист
+          </button>
+          <span style={{ color: "#666", fontSize: 13 }}>
+            (чергує порції А/Б, зупиняється, коли якийсь список вичерпано)
+          </span>
+        </div>
 
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <label style={{ fontSize: 13, whiteSpace: "nowrap" }}>По скільки з А:</label>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={1}
+                value={mixACount}
+                onChange={(e) => setMixACount(Number(e.target.value))}
+                style={{ width: 56, padding: 4 }}
+              />
+            </div>
             <select
               value={mixAId}
               onChange={(e) => {
@@ -331,6 +383,18 @@ export default function App() {
           </div>
 
           <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <label style={{ fontSize: 13, whiteSpace: "nowrap" }}>По скільки з Б:</label>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={1}
+                value={mixBCount}
+                onChange={(e) => setMixBCount(Number(e.target.value))}
+                style={{ width: 56, padding: 4 }}
+              />
+            </div>
             <select
               value={mixBId}
               onChange={(e) => {
