@@ -24,6 +24,17 @@ export default function App() {
   const [newSavedId, setNewSavedId] = useState("")
   const [savingId, setSavingId] = useState(false)
 
+  // Мікс двох плейлистів (A/Б) у результуючий список
+  const [mixAId, setMixAId] = useState("")
+  const [mixBId, setMixBId] = useState("")
+  const [mixATracks, setMixATracks] = useState([])
+  const [mixBTracks, setMixBTracks] = useState([])
+  const [mixALoading, setMixALoading] = useState(false)
+  const [mixBLoading, setMixBLoading] = useState(false)
+  const [mixAError, setMixAError] = useState("")
+  const [mixBError, setMixBError] = useState("")
+  const [mixResult, setMixResult] = useState([])
+
   useEffect(() => {
     loadSavedPlaylists()
   }, [])
@@ -90,6 +101,57 @@ export default function App() {
     }
   }
 
+  async function loadMixList(side, id) {
+    if (!id) return
+    const setLoading = side === "A" ? setMixALoading : setMixBLoading
+    const setErr = side === "A" ? setMixAError : setMixBError
+    const setList = side === "A" ? setMixATracks : setMixBTracks
+    setLoading(true)
+    setErr("")
+    try {
+      const res = await fetch(`${API_BASE}/playlist/${encodeURIComponent(id)}`)
+      if (!res.ok) throw new Error("Не вдалося завантажити плейлист")
+      const data = await res.json()
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error("Плейлист порожній або не знайдений")
+      }
+      setList(data)
+    } catch (e) {
+      setErr(e.message)
+      setList([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function addToMix(track, origin) {
+    setMixResult((prev) => [
+      ...prev,
+      { ...track, _origin: origin, _key: `${origin}-${track.videoId}-${Date.now()}-${Math.random()}` },
+    ])
+  }
+
+  function removeFromMix(key) {
+    setMixResult((prev) => prev.filter((t) => t._key !== key))
+  }
+
+  function moveMixItem(pos, dir) {
+    setMixResult((prev) => {
+      const swapWith = pos + dir
+      if (swapWith < 0 || swapWith >= prev.length) return prev
+      const next = [...prev]
+      ;[next[pos], next[swapWith]] = [next[swapWith], next[pos]]
+      return next
+    })
+  }
+
+  function playMix() {
+    if (mixResult.length === 0) return
+    setTracks(mixResult)
+    setOrder(mixResult.map((_, i) => i))
+    setCurrent(0)
+  }
+
   function moveTrack(pos, dir) {
     setOrder((prev) => {
       const swapWith = pos + dir
@@ -128,7 +190,7 @@ export default function App() {
     .filter(Boolean)
 
   return (
-    <div style={{ maxWidth: 720, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
+    <div style={{ maxWidth: 1100, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
       <h1>🎵 YTM Player</h1>
       <p>
         Встав ID плейлиста з YouTube Music — це частина URL після{" "}
@@ -189,6 +251,155 @@ export default function App() {
             ))}
           </ul>
         )}
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <h3>🎛 Мікс двох плейлистів</h3>
+        <p style={{ color: "#666", fontSize: 13 }}>
+          Обери плейлист А і Б зі збережених, клікай по треках — вони підуть у
+          результуючий список праворуч зі своїм кольором.
+        </p>
+
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+            <select
+              value={mixAId}
+              onChange={(e) => {
+                setMixAId(e.target.value)
+                loadMixList("A", e.target.value)
+              }}
+              style={{ width: "100%", padding: 6 }}
+            >
+              <option value="">— плейлист А —</option>
+              {savedPlaylists.map((pl) => (
+                <option key={pl.id} value={pl.id}>
+                  {pl.name}
+                </option>
+              ))}
+            </select>
+            {mixALoading && <p>Завантаження…</p>}
+            {mixAError && <p style={{ color: "crimson" }}>{mixAError}</p>}
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                marginTop: 8,
+                maxHeight: 360,
+                overflowY: "auto",
+                border: "1px solid #eee",
+                borderRadius: 6,
+              }}
+            >
+              {mixATracks.map((t, i) => (
+                <li
+                  key={i}
+                  onClick={() => addToMix(t, "A")}
+                  style={{
+                    cursor: "pointer",
+                    padding: "6px 10px",
+                    background: "#ffe3e3",
+                    borderBottom: "1px solid #ffc9c9",
+                  }}
+                >
+                  {t.name || t.title}
+                  {t.artist?.name ? ` — ${t.artist.name}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+            <select
+              value={mixBId}
+              onChange={(e) => {
+                setMixBId(e.target.value)
+                loadMixList("B", e.target.value)
+              }}
+              style={{ width: "100%", padding: 6 }}
+            >
+              <option value="">— плейлист Б —</option>
+              {savedPlaylists.map((pl) => (
+                <option key={pl.id} value={pl.id}>
+                  {pl.name}
+                </option>
+              ))}
+            </select>
+            {mixBLoading && <p>Завантаження…</p>}
+            {mixBError && <p style={{ color: "crimson" }}>{mixBError}</p>}
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                marginTop: 8,
+                maxHeight: 360,
+                overflowY: "auto",
+                border: "1px solid #eee",
+                borderRadius: 6,
+              }}
+            >
+              {mixBTracks.map((t, i) => (
+                <li
+                  key={i}
+                  onClick={() => addToMix(t, "B")}
+                  style={{
+                    cursor: "pointer",
+                    padding: "6px 10px",
+                    background: "#e0f0ff",
+                    borderBottom: "1px solid #b9e0ff",
+                  }}
+                >
+                  {t.name || t.title}
+                  {t.artist?.name ? ` — ${t.artist.name}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <strong>Результат ({mixResult.length})</strong>
+              <button onClick={playMix} disabled={mixResult.length === 0}>
+                ▶️ Відтворити
+              </button>
+            </div>
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                marginTop: 8,
+                maxHeight: 360,
+                overflowY: "auto",
+                border: "1px solid #eee",
+                borderRadius: 6,
+              }}
+            >
+              {mixResult.map((t, pos) => (
+                <li
+                  key={t._key}
+                  style={{
+                    padding: "6px 10px",
+                    background: t._origin === "A" ? "#ffe3e3" : "#e0f0ff",
+                    borderBottom: t._origin === "A" ? "1px solid #ffc9c9" : "1px solid #b9e0ff",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <span>
+                    {t.name || t.title}
+                    {t.artist?.name ? ` — ${t.artist.name}` : ""}
+                  </span>
+                  <span style={{ whiteSpace: "nowrap" }}>
+                    <button onClick={() => moveMixItem(pos, -1)} title="Вгору">↑</button>
+                    <button onClick={() => moveMixItem(pos, 1)} title="Вниз">↓</button>
+                    <button onClick={() => removeFromMix(t._key)} title="Прибрати">✕</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
 
       {currentTrack && (
