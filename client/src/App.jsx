@@ -36,9 +36,14 @@ export default function App() {
   const [mixAError, setMixAError] = useState("")
   const [mixBError, setMixBError] = useState("")
   const [mixResult, setMixResult] = useState([])
+  const [savedMixes, setSavedMixes] = useState([])
+  const [mixName, setMixName] = useState("")
+  const [mixSaving, setMixSaving] = useState(false)
+  const [mixSaveError, setMixSaveError] = useState("")
 
   useEffect(() => {
     loadSavedPlaylists()
+    loadSavedMixes()
   }, [])
 
   async function loadSavedPlaylists() {
@@ -77,6 +82,54 @@ export default function App() {
     } catch (e) {
       setSavedError(e.message)
     }
+  }
+
+  async function loadSavedMixes() {
+    try {
+      const res = await fetch(`${API_BASE}/mixes`)
+      if (!res.ok) throw new Error("Не вдалося отримати збережені мікси")
+      setSavedMixes(await res.json())
+    } catch (e) {
+      setMixSaveError(e.message)
+    }
+  }
+
+  async function saveMix() {
+    const name = mixName.trim()
+    if (!name || mixResult.length === 0) return
+    setMixSaving(true)
+    setMixSaveError("")
+    try {
+      const tracks = mixResult.map(({ _key, _sourceIndex, _sourceListId, ...rest }) => rest)
+      const res = await fetch(`${API_BASE}/mixes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, tracks }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Не вдалося зберегти мікс")
+      setSavedMixes((prev) => [...prev, data])
+      setMixName("")
+    } catch (e) {
+      setMixSaveError(e.message)
+    } finally {
+      setMixSaving(false)
+    }
+  }
+
+  async function removeSavedMix(id) {
+    try {
+      await fetch(`${API_BASE}/mixes/${encodeURIComponent(id)}`, { method: "DELETE" })
+      setSavedMixes((prev) => prev.filter((m) => m.id !== id))
+    } catch (e) {
+      setMixSaveError(e.message)
+    }
+  }
+
+  function playSavedMix(mix) {
+    setTracks(mix.tracks)
+    setOrder(mix.tracks.map((_, i) => i))
+    setCurrent(0)
   }
 
   async function loadPlaylist(idOverride) {
@@ -452,6 +505,18 @@ export default function App() {
                 ▶️ Відтворити
               </button>
             </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input
+                value={mixName}
+                onChange={(e) => setMixName(e.target.value)}
+                placeholder="Назва міксу"
+                style={{ flex: 1, padding: 6 }}
+              />
+              <button onClick={saveMix} disabled={!mixName.trim() || mixResult.length === 0 || mixSaving}>
+                {mixSaving ? "Збереження…" : "💾 Зберегти"}
+              </button>
+            </div>
+            {mixSaveError && <p style={{ color: "crimson" }}>{mixSaveError}</p>}
             <ul
               style={{
                 listStyle: "none",
@@ -492,6 +557,22 @@ export default function App() {
         </div>
       </div>
 
+      {savedMixes.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h3>🎧 Збережені мікси</h3>
+          <ul style={{ paddingLeft: 20, marginTop: 8 }}>
+            {savedMixes.map((mix) => (
+              <li key={mix.id} style={{ marginBottom: 4 }}>
+                <span style={{ cursor: "pointer" }} onClick={() => playSavedMix(mix)}>
+                  {mix.name} ({mix.tracks.length})
+                </span>{" "}
+                <button onClick={() => removeSavedMix(mix.id)} title="Прибрати">✕</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {currentTrack && (
         <div style={{ marginTop: 24 }}>
           <h3>
@@ -529,7 +610,14 @@ export default function App() {
             {order.map((idx, pos) => {
               const t = tracks[idx]
               return (
-                <li key={idx} style={{ marginBottom: 4 }}>
+                <li
+                  key={idx}
+                  style={{
+                    marginBottom: 4,
+                    borderLeft: t._origin ? `4px solid ${t._origin === "A" ? "#e03131" : "#1971c2"}` : "none",
+                    paddingLeft: t._origin ? 6 : 0,
+                  }}
+                >
                   <span
                     onClick={() => setCurrent(pos)}
                     style={{

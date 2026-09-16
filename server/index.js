@@ -10,20 +10,26 @@ dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SAVED_PLAYLISTS_FILE = path.join(__dirname, "data", "playlists.json")
+const SAVED_MIXES_FILE = path.join(__dirname, "data", "mixes.json")
 
-async function readSavedPlaylists() {
+async function readJsonArray(file) {
   try {
-    return JSON.parse(await fs.readFile(SAVED_PLAYLISTS_FILE, "utf-8"))
+    return JSON.parse(await fs.readFile(file, "utf-8"))
   } catch (err) {
     if (err.code === "ENOENT") return []
     throw err
   }
 }
 
-async function writeSavedPlaylists(playlists) {
-  await fs.mkdir(path.dirname(SAVED_PLAYLISTS_FILE), { recursive: true })
-  await fs.writeFile(SAVED_PLAYLISTS_FILE, JSON.stringify(playlists, null, 2), "utf-8")
+async function writeJsonArray(file, data) {
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(file, JSON.stringify(data, null, 2), "utf-8")
 }
+
+const readSavedPlaylists = () => readJsonArray(SAVED_PLAYLISTS_FILE)
+const writeSavedPlaylists = (data) => writeJsonArray(SAVED_PLAYLISTS_FILE, data)
+const readSavedMixes = () => readJsonArray(SAVED_MIXES_FILE)
+const writeSavedMixes = (data) => writeJsonArray(SAVED_MIXES_FILE, data)
 
 const app = express()
 app.use(cors())
@@ -128,6 +134,56 @@ app.delete("/api/saved-playlists/:id", async (req, res) => {
     res.json({ ok: true })
   } catch (err) {
     console.error("[/api/saved-playlists DELETE] error:", err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+/**
+ * Збережені мікси — конкретний набір треків (з "🎛 Мікс двох плейлистів"),
+ * а не ID плейлиста. Зберігаємо самі треки, бо мікс не існує як окремий
+ * плейлист на YouTube Music.
+ */
+app.get("/api/mixes", async (req, res) => {
+  try {
+    res.json(await readSavedMixes())
+  } catch (err) {
+    console.error("[/api/mixes] error:", err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post("/api/mixes", async (req, res) => {
+  const name = req.body?.name?.trim()
+  const tracks = req.body?.tracks
+  if (!name) return res.status(400).json({ error: "Відсутня назва міксу" })
+  if (!Array.isArray(tracks) || tracks.length === 0) {
+    return res.status(400).json({ error: "Порожній мікс — нема що зберігати" })
+  }
+  try {
+    const mixes = await readSavedMixes()
+    const entry = {
+      id: `mix-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      name,
+      tracks,
+      createdAt: new Date().toISOString(),
+    }
+    mixes.push(entry)
+    await writeSavedMixes(mixes)
+    res.json(entry)
+  } catch (err) {
+    console.error("[/api/mixes POST] error:", err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.delete("/api/mixes/:id", async (req, res) => {
+  try {
+    const mixes = await readSavedMixes()
+    const next = mixes.filter((m) => m.id !== req.params.id)
+    await writeSavedMixes(next)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error("[/api/mixes DELETE] error:", err)
     res.status(500).json({ error: err.message })
   }
 })
