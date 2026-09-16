@@ -101,18 +101,40 @@ npm run dev                              # :5173, Vite HMR
   проксить на `http://server:4000/api/` — ім'я сервісу в docker-мережі, не
   `localhost` (на відміну від Vite dev-проксі в `vite.config.js`).
 
+Обидва порти (`4000`, `8080`) прив'язані до **`127.0.0.1`**, не `0.0.0.0` —
+ззовні контейнери недосяжні напряму, єдина зовнішня точка входу — хостовий
+nginx (`deploy/nginx.conf`, розділ нижче).
+
 ```bash
 docker compose up -d --build   # підняти обидва контейнери
 docker compose down            # зупинити (volume server-data лишається)
 ```
 
-Перевірено: build обох образів, `/api/health` напряму (:4000) і через nginx
-проксі (:8080/api/...), реальне завантаження плейлиста через повний стек —
-все працює.
+⚠️ **Docker і локальний dev не можуть працювати одночасно** — обидва хочуть
+порти 4000/8080(5173). Перед `docker compose up` зупини `npm start`/`npm run dev`
+(і навпаки).
 
-## Розгортання
+Перевірено: build обох образів, `/api/health` напряму (:4000) і через nginx
+проксі (:8080/api/...), реальне завантаження плейлиста через повний стек,
+конфіг `deploy/nginx.conf` (синтаксис + проксі `/`) — все працює.
+
+## Розгортання на VPS
 
 Раніше опублікований план (Artifact:
 https://claude.ai/artifact/RHHRTF8nfujfQi4ujBiJVc) описує **три** systemd-служби
-включно з python-service — це вже застаріло. Тепер простіше: `docker compose up`
-на VPS (docker-compose.yml вище) замість ручного systemd + nginx налаштування.
+включно з python-service — **застарілий**, ігноруй. Актуальний шлях:
+
+1. На VPS: встанови Docker + Docker Compose, склонуй репозиторій.
+2. `docker compose up -d --build` — підніме client (:8080) і server (:4000),
+   обидва тільки на `127.0.0.1`.
+3. Встанови хостовий nginx (`sudo apt install nginx`), онови плейсхолдер
+   домену/IP у `deploy/nginx.conf`, постав як показано в коментарях файлу
+   (`sites-available` → symlink → `nginx -t` → `reload`).
+4. Фаєрвол: `sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable`
+   — порти 4000/8080 назовні не відкривати (і так прив'язані лише до localhost).
+5. HTTPS (якщо є домен): `certbot --nginx -d домен` — інструкція в коментарі
+   `deploy/nginx.conf`.
+
+`browser.json`/`playwright_state.json`/python-service з того старого плану
+більше не існують — авторизація YouTube Music не потрібна взагалі
+(`/api/playlist/:id` анонімний, дивись розділ вище).
