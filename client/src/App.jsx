@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react"
 import Player from "./Player.jsx"
+import Auth from "./Auth.jsx"
 
 const API_BASE = "/api"
 
+function apiFetch(path, options = {}) {
+  return fetch(`${API_BASE}${path}`, { credentials: "include", ...options })
+}
+
 export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const [playlistId, setPlaylistId] = useState("")
   const [tracks, setTracks] = useState([])
   const [order, setOrder] = useState([]) // масив індексів tracks -> визначає порядок відтворення
@@ -42,13 +49,26 @@ export default function App() {
   const [mixSaveError, setMixSaveError] = useState("")
 
   useEffect(() => {
+    apiFetch("/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(setUser)
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
     loadSavedPlaylists()
     loadSavedMixes()
-  }, [])
+  }, [user])
+
+  async function logout() {
+    await apiFetch("/auth/logout", { method: "POST" })
+    setUser(null)
+  }
 
   async function loadSavedPlaylists() {
     try {
-      const res = await fetch(`${API_BASE}/saved-playlists`)
+      const res = await apiFetch("/saved-playlists")
       if (!res.ok) throw new Error("Не вдалося отримати збережені плейлисти")
       setSavedPlaylists(await res.json())
     } catch (e) {
@@ -60,7 +80,7 @@ export default function App() {
     setSavingId(id)
     setSavedError("")
     try {
-      const res = await fetch(`${API_BASE}/saved-playlists`, {
+      const res = await apiFetch("/saved-playlists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, name }),
@@ -77,7 +97,7 @@ export default function App() {
 
   async function removeSavedPlaylist(id) {
     try {
-      await fetch(`${API_BASE}/saved-playlists/${encodeURIComponent(id)}`, { method: "DELETE" })
+      await apiFetch(`/saved-playlists/${encodeURIComponent(id)}`, { method: "DELETE" })
       setSavedPlaylists((prev) => prev.filter((p) => p.id !== id))
     } catch (e) {
       setSavedError(e.message)
@@ -86,7 +106,7 @@ export default function App() {
 
   async function loadSavedMixes() {
     try {
-      const res = await fetch(`${API_BASE}/mixes`)
+      const res = await apiFetch("/mixes")
       if (!res.ok) throw new Error("Не вдалося отримати збережені мікси")
       setSavedMixes(await res.json())
     } catch (e) {
@@ -105,7 +125,7 @@ export default function App() {
     setMixSaveError("")
     try {
       const tracks = mixResult.map(({ _key, _sourceIndex, _sourceListId, ...rest }) => rest)
-      const res = await fetch(`${API_BASE}/mixes`, {
+      const res = await apiFetch("/mixes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, tracks }),
@@ -123,7 +143,7 @@ export default function App() {
 
   async function removeSavedMix(id) {
     try {
-      await fetch(`${API_BASE}/mixes/${encodeURIComponent(id)}`, { method: "DELETE" })
+      await apiFetch(`/mixes/${encodeURIComponent(id)}`, { method: "DELETE" })
       setSavedMixes((prev) => prev.filter((m) => m.id !== id))
     } catch (e) {
       setMixSaveError(e.message)
@@ -142,7 +162,7 @@ export default function App() {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch(`${API_BASE}/playlist/${encodeURIComponent(id)}`)
+      const res = await apiFetch(`/playlist/${encodeURIComponent(id)}`)
       if (!res.ok) throw new Error("Не вдалося завантажити плейлист (перевір ID / cookie на сервері)")
       const data = await res.json()
       if (!Array.isArray(data) || data.length === 0) {
@@ -168,7 +188,7 @@ export default function App() {
     setLoading(true)
     setErr("")
     try {
-      const res = await fetch(`${API_BASE}/playlist/${encodeURIComponent(id)}`)
+      const res = await apiFetch(`/playlist/${encodeURIComponent(id)}`)
       if (!res.ok) throw new Error("Не вдалося завантажити плейлист")
       const data = await res.json()
       if (!Array.isArray(data) || data.length === 0) {
@@ -294,9 +314,17 @@ export default function App() {
     .map((idx) => tracks[idx]?.videoId)
     .filter(Boolean)
 
+  if (!authChecked) return null
+  if (!user) return <Auth onAuth={setUser} />
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", fontFamily: "sans-serif", padding: "0 16px" }}>
-      <h1>🎵 YTM Player</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>🎵 YTM Player</h1>
+        <div style={{ fontSize: 13, color: "#666" }}>
+          {user.email} · <a href="#" onClick={(e) => { e.preventDefault(); logout() }}>Вийти</a>
+        </div>
+      </div>
       <p>
         Встав ID плейлиста з YouTube Music — це частина URL після{" "}
         <code>?list=</code> на сторінці <code>music.youtube.com/playlist?list=...</code>

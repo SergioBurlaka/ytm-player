@@ -17,21 +17,39 @@ server/  Express (:4000) — /api/playlist/:id, /api/search, /api/saved-playlist
 плейлисти" (нижче), просто без автосканування бібліотеки одним кліком; нові
 плейлисти додаються вручну за ID з URL `music.youtube.com/playlist?list=...`.
 
-### Збережені плейлисти (server/index.js)
+### Юзери й авторизація (email + пароль)
 
-`GET/POST /api/playlist/:id` працює анонімно — YouTube Music плейлисти
-доступні за ID без авторизації, як "непублічне посилання". `server/.env`
-навіть не містить `YTM_COOKIE`.
+Багатокористувацький застосунок з **PostgreSQL** (`server/db/schema.sql`,
+`server/db/index.js`). Таблиці: `users` (email, bcrypt-хеш пароля),
+`saved_playlists` (FK `user_id`, `UNIQUE(user_id, playlist_id)`),
+`saved_mixes` (FK `user_id`, `tracks` — JSONB), `session` (стандартна схема
+`connect-pg-simple` — сесії теж у Postgres, не in-memory).
 
-`server/data/playlists.json` (гітігнорнутий, автостворюється при першому
-записі) — список `{id, name, addedAt}`:
-- `GET /api/saved-playlists`
-- `POST /api/saved-playlists` `{id, name?}` — якщо `name` не передано,
-  сервер сам підтягує назву через `ytmusic-api`'s `getPlaylist(id)` (теж без auth)
-- `DELETE /api/saved-playlists/:id`
+`server/index.js`: `express-session` + `connect-pg-simple`, httpOnly-кукі
+`sameSite: lax`, 30 днів. Роути:
+- `POST /api/auth/register` `{email, password}` — bcrypt-хеш, одразу логінить
+- `POST /api/auth/login` / `POST /api/auth/logout` / `GET /api/auth/me`
+- Усі `/api/saved-playlists*` і `/api/mixes*` — за `requireAuth`, завжди
+  фільтруються по `req.session.userId` (WHERE user_id = $1 у кожному запиті)
 
-На фронті — блок "⭐ Збережені плейлисти": поле для ручного додавання ID +
-список з можливістю завантажити/прибрати.
+Клієнт: `client/src/Auth.jsx` — форма логін/реєстрація (перемикач режиму).
+`App.jsx` на маунті робить `GET /api/auth/me`; якщо 401 — показує `<Auth>`,
+інакше застосунок як є + email/"Вийти" в шапці. Усі fetch-виклики йдуть
+через `apiFetch()` (App.jsx) — обгортка з `credentials: "include"`, щоб
+сесійна кука летіла разом із запитом (через Vite/nginx проксі це й так
+той самий origin, але credentials:"include" явний і безпечний за замовчуванням).
+
+`GET/POST /api/playlist/:id` (сам пошук/завантаження треків) лишається
+**анонімним** — не потребує логіну, бо YouTube Music плейлисти доступні за
+ID без авторизації, як "непублічне посилання". Це навмисно не за
+`requireAuth` — фронт все одно ховає весь UI за логіном.
+
+**Стара файлова версія** (`server/data/playlists.json` / `mixes.json`,
+без юзерів, одна спільна "на всіх" купа даних) — замінена цією схемою.
+Файли лишились на диску (гітігнорнуті) для одноразового переносу:
+`server/scripts/migrate-json-to-db.js your@email.com` (юзер має бути вже
+зареєстрований) — вставляє записи в БД під нього
+(`ON CONFLICT DO NOTHING` на плейлистах, тому safe re-run).
 
 ### Кросфейд між треками (client/src/Player.jsx)
 
@@ -72,17 +90,20 @@ autoplay-блокування.
 з початку кожного списку, зупиняється, щойно якийсь список не може дати
 повну наступну порцію.
 
-Результат можна зберегти як окремий "мікс" — `server/data/mixes.json`
-(`GET/POST/DELETE /api/mixes`), бо це не ID реального плейлиста, а
-конкретний набір треків. У черзі відтворення збереженого міксу кожен трек
-має кольорову смужку зліва за походженням (`t._origin`).
+Результат можна зберегти як окремий "мікс" (`GET/POST/DELETE /api/mixes`,
+таблиця `saved_mixes`), бо це не ID реального плейлиста, а конкретний набір
+треків (JSONB). У черзі відтворення збереженого міксу кожен трек має
+кольорову смужку зліва за походженням (`t._origin`).
 
 ## Запуск локально (Windows/PowerShell)
 
 ```powershell
+# postgres (тільки БД в docker, сервер/клієнт — звичайний dev)
+docker compose up -d postgres
+
 # server
 cd server
-npm start                                # :4000 (npm run dev = --watch, автоперезапуск)
+npm start                                # :4000, потребує DATABASE_URL в .env
 
 # client
 cd client
@@ -91,32 +112,38 @@ npm run dev                              # :5173, Vite HMR
 
 ## Docker
 
-`docker-compose.yml` у корені — два сервіси:
-- `server` — Node, `server/Dockerfile`, :4000, `server/data/` змонтовано як
-  іменований volume `server-data` (інакше збережені плейлисти/мікси губляться
-  при перестворенні контейнера — це ОКРЕМИЙ volume, не той самий
-  `server/data/`, що при локальному `npm start`).
+`docker-compose.yml` у корені — три сервіси:
+- `postgres` — `postgres:16-alpine`, volume `pg-data`, healthcheck
+  (`pg_isready`), `127.0.0.1:5432`. `server` чекає `service_healthy` перед
+  стартом (`depends_on.condition`).
+- `server` — Node, `server/Dockerfile`, :4000, `DATABASE_URL`/`SESSION_SECRET`
+  через `environment:` у compose (не .env-файл — простіше для контейнера).
+  На старті сам ганяє `server/db/schema.sql` (ретраї на випадок, якщо
+  Postgres ще не зовсім готовий, хоча healthcheck це й так покриває).
 - `client` — multi-stage: `npm run build` → статика в `nginx:alpine`
   (`client/nginx.conf`), :80 (мапиться на хост :8080). `location /api/`
   проксить на `http://server:4000/api/` — ім'я сервісу в docker-мережі, не
   `localhost` (на відміну від Vite dev-проксі в `vite.config.js`).
 
-Обидва порти (`4000`, `8080`) прив'язані до **`127.0.0.1`**, не `0.0.0.0` —
+Порти `4000`/`8080`/`5432` прив'язані до **`127.0.0.1`**, не `0.0.0.0` —
 ззовні контейнери недосяжні напряму, єдина зовнішня точка входу — хостовий
 nginx (`deploy/nginx.conf`, розділ нижче).
 
 ```bash
-docker compose up -d --build   # підняти обидва контейнери
-docker compose down            # зупинити (volume server-data лишається)
+docker compose up -d --build   # підняти всі три контейнери
+docker compose down            # зупинити (volume pg-data лишається — дані юзерів цілі)
 ```
 
 ⚠️ **Docker і локальний dev не можуть працювати одночасно** — обидва хочуть
 порти 4000/8080(5173). Перед `docker compose up` зупини `npm start`/`npm run dev`
-(і навпаки).
+(і навпаки). Можна тримати лише `postgres` в docker і сервер/клієнт локально
+(команди вище) — це не конфліктує.
 
-Перевірено: build обох образів, `/api/health` напряму (:4000) і через nginx
-проксі (:8080/api/...), реальне завантаження плейлиста через повний стек,
-конфіг `deploy/nginx.conf` (синтаксис + проксі `/`) — все працює.
+Перевірено повний auth-флоу через docker compose (усі три контейнери):
+register/login/logout/me через cookie-сесію, ізоляція даних між двома
+юзерами (401 без сесії, 409 на дубль email, 401 на невірний пароль),
+`migrate-json-to-db.js` (14 плейлистів + 2 мікси перенеслись), і той самий
+флоу в браузері (форма логіну → застосунок → вихід → форма знову).
 
 ## Розгортання на VPS
 
@@ -124,9 +151,12 @@ docker compose down            # зупинити (volume server-data лишає
 https://claude.ai/artifact/RHHRTF8nfujfQi4ujBiJVc) описує **три** systemd-служби
 включно з python-service — **застарілий**, ігноруй. Актуальний шлях:
 
+0. ⚠️ Заміни `SESSION_SECRET=change-me-in-production` і
+   `POSTGRES_PASSWORD=ytm` у `docker-compose.yml` на реальні секрети перед
+   деплоєм — зараз там dev-плейсхолдери.
 1. На VPS: встанови Docker + Docker Compose, склонуй репозиторій.
-2. `docker compose up -d --build` — підніме client (:8080) і server (:4000),
-   обидва тільки на `127.0.0.1`.
+2. `docker compose up -d --build` — підніме postgres, server (:4000) і
+   client (:8080), усе тільки на `127.0.0.1`.
 3. Встанови хостовий nginx (`sudo apt install nginx`), онови плейсхолдер
    домену/IP у `deploy/nginx.conf`, постав як показано в коментарях файлу
    (`sites-available` → symlink → `nginx -t` → `reload`).

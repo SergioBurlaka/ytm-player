@@ -1,14 +1,35 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ytm-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=ytm
+      - POSTGRES_PASSWORD=ytm
+      - POSTGRES_DB=ytm
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ytm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   server:
     build: ./server
     container_name: ytm-server
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       - PORT=4000
+      - DATABASE_URL=postgres://ytm:ytm@postgres:5432/ytm
+      - SESSION_SECRET=change-me-in-production
       # Опційно: YTM_COOKIE=... (розкоментуй, якщо потрібні приватні плейлисти
       # без збереження за ID — див. server/.env.example)
-    volumes:
-      - server-data:/app/data
     ports:
       # Лише localhost — назовні сервер дивитись не повинен, вхід іде через
       # хостовий nginx (deploy/nginx.conf) на client:80.
@@ -24,4 +45,4 @@ services:
       - "127.0.0.1:8080:80"
 
 volumes:
-  server-data:
+  pg-data:
